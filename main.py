@@ -73,7 +73,7 @@ def get_user_letter(user_id: int):
             WHERE user_id = ?
         ''', (user_id,))
         
-        result = cursor.fetchone()W
+        result = cursor.fetchone()
         return result
     except Exception as e:
         print(f"Ошибка получения письма: {e}")
