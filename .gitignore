@@ -1,2 +1,4 @@
 config.py
 .venv
+adm.db
+__pycache__

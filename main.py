@@ -11,6 +11,7 @@ from aiogram import F
 import sqlite3
 
 from config import TOKEN, GROUP_ID, DATABASE_NAME
+from text import locale
 
 # Объект бота
 bot = Bot(token=TOKEN)
@@ -74,7 +75,7 @@ def get_user_letter(user_id: int):
         ''', (user_id,))
         
         result = cursor.fetchone()
-        return result
+        return result[0]
     except Exception as e:
         print(f"Ошибка получения письма: {e}")
         return None
@@ -125,32 +126,39 @@ def get_main_keyboard(has_letter=False):
     builder = ReplyKeyboardBuilder()
     
     if not has_letter:
-        builder.add(types.KeyboardButton(text="✉️ Написать письмо"))
+        builder.add(types.KeyboardButton(text=locale["write"]))
     else:
-        builder.add(types.KeyboardButton(text="👀 Посмотреть письмо"))
-        builder.add(types.KeyboardButton(text="📝 Переписать письмо"))
+        builder.add(types.KeyboardButton(text=locale["read"]))
+        builder.add(types.KeyboardButton(text=locale["edit"]))
     
     return builder.as_markup(resize_keyboard=True)
 
 # Хэндлер на команду /start
 @dp.message(Command("start", "help"))
 async def cmd_start(message: types.Message):
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
     user_id = message.from_user.id
     # Проверка группы
     if not await is_user_in_group(user_id):
-        await message.answer(
-            f"Дед слушает Радио\n"
-            f"НО ТЕБЯ ТАМ НЕТ"
-        )
+        await message.answer(locale["notmember"])
         return
     # Есть ли письмо
     user_has_letter = has_letter(user_id)
-    await message.reply("Садись на коленочки, деточка, сейчас мы будем тебя поздравлять.", reply_markup=get_main_keyboard(user_has_letter))
+    await message.reply(locale["start"], reply_markup=get_main_keyboard(user_has_letter))
 
 
 # Хэндлер на команду /say
 @dp.message(Command("say"))
 async def cmd_say(message: types.Message):
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
+    user_id = message.from_user.id
+    # Проверка группы
+    if not await is_user_in_group(user_id):
+        await message.answer(locale["notmember"])
+        return
+    
     text = ''
     try:
         text += message.text.split("/say ")[1]
@@ -159,19 +167,19 @@ async def cmd_say(message: types.Message):
         pass
 
 
-@dp.message(lambda message: message.text == "✉️ Написать письмо")
+# Обработчик кнопки "Написать письмо"
+@dp.message(lambda message: message.text == locale["write"])
 async def write_letter_start(message: types.Message, state: FSMContext):
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
     user_id = message.from_user.id
     # Проверка группы
     if not await is_user_in_group(user_id):
-        await message.answer(
-            f"Дед слушает Радио\n"
-            f"НО ТЕБЯ ТАМ НЕТ"
-        )
+        await message.answer(locale["notmember"])
         return
     
     await message.answer(
-        "Пиши, что ты ждешь?",
+        locale["editnow"],
         reply_markup=types.ReplyKeyboardRemove()
     )
 
@@ -181,16 +189,14 @@ async def write_letter_start(message: types.Message, state: FSMContext):
 # Обработка текста
 @dp.message(LetterStates.waiting_for_letter)
 async def letter(message: types.Message, state: FSMContext):
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
     user_id = message.from_user.id
     letter_text = message.text
     
     # Проверяем длину письма
     if len(letter_text) > 2000:
-        await message.answer(
-            "❌ Дедушка не читает  2000 символов.\n"
-            f"Сейчас: {len(letter_text)} символов.\n\n"
-            "Длиннопосты не пройдут"
-        )
+        await message.answer(locale["charlimit"])
         return
     
     # Сохраняем письмо в базу данных
@@ -206,49 +212,46 @@ async def letter(message: types.Message, state: FSMContext):
     if success:
         await state.clear()
         await message.answer(
-            "Принято! Письмо ушло на проверку эльфам-засранцам 🎅\n\n"
-            f"📄 Ваше письмо:\n{letter_text}",
+            f"{locale['done']}{letter_text}",
             reply_markup=get_main_keyboard(has_letter=True)
         )
     else:
-        await message.answer(
-            "❌ Что-то пошло не так"
-        )
+        await message.answer(locale["wrong"])
 
 # Обработчик кнопки "Посмотреть письмо"
-@dp.message(F.text == "👀 Посмотреть письмо")
+@dp.message(F.text == locale["read"])
 async def view_letter(message: types.Message):
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
     user_id = message.from_user.id
     letter_data = get_user_letter(user_id)
     
     if not letter_data:
-        await message.answer("Я еще не видел писем от тебя")
+        await message.answer(locale["noletter"])
         return
     
     letter_text = letter_data
     
     response_text = (
-        f"📄 Ваше письмо Деду:\n\n{letter_text}\n\n"
+        f'{locale["view"]}{letter_text}\n\n'
     )
     
     await message.answer(response_text, reply_markup=get_main_keyboard(has_letter=True))
 
 # Обработчик кнопки "Переписать письмо"
-@dp.message(F.text == "📝 Переписать письмо")
+@dp.message(lambda message: message.text == locale["edit"])
 async def rewrite_letter_start(message: types.Message, state: FSMContext):
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
     user_id = message.from_user.id
     
     # Проверка группы
     if not await is_user_in_group(user_id):
-        await message.answer(
-            f"Дед слушает Радио\n"
-            f"НО ТЕБЯ ТАМ НЕТ"
-        )
+        await message.answer(locale["notmember"])
         return
     
     await message.answer(
-        "Даю тебе еще одну попытку деточка:\n\n"
-        "Я уже сжег твое старое письмо",
+        locale["moretry"],
         reply_markup=types.ReplyKeyboardRemove()
     )
     
@@ -260,20 +263,18 @@ async def rewrite_letter_start(message: types.Message, state: FSMContext):
 @dp.message()
 async def handle_other_messages(message: types.Message):
     user_id = message.from_user.id
-    
+    if message.chat.type != "private":
+        return  # Игнорируем сообщения не из лички
     # Проверка группы
     if not await is_user_in_group(user_id):
-        await message.answer(
-            f"Дед слушает Радио\n"
-            f"НО ТЕБЯ ТАМ НЕТ"
-        )
+        await message.answer(locale["notmember"])
         return
     
     # Проверяем, есть ли уже письмо от пользователя
     user_has_letter = has_letter(user_id)
     
     await message.answer(
-        "Я для кого сделал кнопки?", reply_markup=get_main_keyboard(user_has_letter)
+        locale["buttons"], reply_markup=get_main_keyboard(user_has_letter)
     )
 
 # Запуск процесса поллинга новых апдейтов
