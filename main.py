@@ -261,6 +261,7 @@ async def rewrite_letter_start(message: types.Message, state: FSMContext):
 @dp.message(Command("clear"))
 async def cmd_say(message: types.Message):
     await message.answer(
+        "fixed",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
