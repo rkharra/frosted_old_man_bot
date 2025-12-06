@@ -257,7 +257,12 @@ async def rewrite_letter_start(message: types.Message, state: FSMContext):
     
     await state.set_state(LetterStates.waiting_for_letter)
 
-
+# Удалятор кнопок
+@dp.message(Command("clear"))
+async def cmd_say(message: types.Message):
+    await message.answer(
+        reply_markup=types.ReplyKeyboardRemove()
+    )
 
 # Обработчик других сообщений
 @dp.message()
